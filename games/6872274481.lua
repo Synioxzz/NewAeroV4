@@ -1,7 +1,4 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 
 local run = function(func)
 	func()
@@ -3048,14 +3045,7 @@ run(function()
 		end
 
 		if LegitAura.Enabled then
-			local isSwinging = inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
-			
-			local timeSinceLastSwing = workspace:GetServerTimeNow() - (bedwars.SwordController.lastSwing or 0)
-			local swingCooldownTime = meta.sword.attackSpeed or 0.42
-			
-			if not isSwinging and timeSinceLastSwing > (swingCooldownTime * 1.2) then
-				return false
-			end
+			if (tick() - bedwars.SwordController.lastSwing) > 0.2 then return false end
 		end
 
 		if SwingTime.Enabled then
@@ -4351,6 +4341,472 @@ run(function()
 		end
 	})
 	Blacklist = ProjectileAimbot:CreateTextList({
+		Name = 'Blacklist',
+		Darker = true,
+		Default = {'telepearl'}
+	})
+end)
+
+run(function()
+	local TargetPart
+	local Targets
+	local FOV
+	local Range
+	local OtherProjectiles
+	local Blacklist
+	local TargetVisualiser
+	
+	local rayCheck = RaycastParams.new()
+	rayCheck.FilterType = Enum.RaycastFilterType.Include
+	rayCheck.FilterDescendantsInstances = {workspace:FindFirstChild('Map') or workspace}
+	local old
+	
+	local selectedTarget = nil
+	local targetOutline = nil
+	local hovering = false
+	local CoreConnections = {}
+	
+	local UserInputService = game:GetService("UserInputService")
+	local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+	local function updateOutline(target)
+		if targetOutline then
+			targetOutline:Destroy()
+			targetOutline = nil
+		end
+		if target and TargetVisualiser.Enabled then
+			targetOutline = Instance.new("Highlight")
+			targetOutline.FillTransparency = 1
+			targetOutline.OutlineColor = Color3.fromRGB(255, 0, 0)
+			targetOutline.OutlineTransparency = 0
+			targetOutline.Adornee = target.Character
+			targetOutline.Parent = target.Character
+		end
+	end
+
+	local function handlePlayerSelection()
+		local mouse = lplr:GetMouse()
+		local function selectTarget(target)
+			if not target then return end
+			if target and target.Parent then
+				local plr = playersService:GetPlayerFromCharacter(target.Parent)
+				if plr then
+					if selectedTarget == plr then
+						selectedTarget = nil
+						updateOutline(nil)
+					else
+						selectedTarget = plr
+						updateOutline(plr)
+					end
+				end
+			end
+		end
+		
+		local con
+		if isMobile then
+			con = UserInputService.TouchTapInWorld:Connect(function(touchPos)
+				if not hovering then updateOutline(nil); return end
+				if not AeroPA.Enabled then pcall(function() con:Disconnect() end); updateOutline(nil); return end
+				local ray = workspace.CurrentCamera:ScreenPointToRay(touchPos.X, touchPos.Y)
+				local result = workspace:Raycast(ray.Origin, ray.Direction * 1000)
+				if result and result.Instance then
+					selectTarget(result.Instance)
+				end
+			end)
+			table.insert(CoreConnections, con)
+		end
+	end
+	
+	local AeroPA = vape.Categories.Blatant:CreateModule({
+		Name = 'AeroPA',
+		Function = function(callback)
+			if callback then
+				handlePlayerSelection()
+				
+				old = bedwars.ProjectileController.calculateImportantLaunchValues
+				bedwars.ProjectileController.calculateImportantLaunchValues = function(...)
+					hovering = true
+					local self, projmeta, worldmeta, origin, shootpos = ...
+					local originPos = entitylib.isAlive and (shootpos or entitylib.character.RootPart.Position) or Vector3.zero
+					
+					local plr
+					if selectedTarget and selectedTarget.Character and (selectedTarget.Character.PrimaryPart.Position - originPos).Magnitude <= Range.Value then
+						plr = selectedTarget
+					else
+						plr = entitylib.EntityMouse({
+							Part = TargetPart.Value,
+							Range = FOV.Value,
+							Players = Targets.Players.Enabled,
+							NPCs = Targets.NPCs.Enabled,
+							Wallcheck = Targets.Walls.Enabled,
+							Origin = originPos
+						})
+					end
+					updateOutline(plr)
+	
+					if plr and plr.Character and plr[TargetPart.Value] and (plr[TargetPart.Value].Position - originPos).Magnitude <= Range.Value then
+						local pos = shootpos or self:getLaunchPosition(origin)
+						if not pos then
+							hovering = false
+							return old(...)
+						end
+	
+						if (not OtherProjectiles.Enabled) and not projmeta.projectile:find('arrow') then
+							hovering = false
+							return old(...)
+						end
+
+						if table.find(Blacklist.ListEnabled, projmeta.projectile) then
+							hovering = false
+							return old(...)
+						end
+	
+						local meta = projmeta:getProjectileMeta()
+						local lifetime = (worldmeta and meta.predictionLifetimeSec or meta.lifetimeSec or 3)
+						local gravity = (meta.gravitationalAcceleration or 196.2) * projmeta.gravityMultiplier
+						local projSpeed = (meta.launchVelocity or 100)
+						local offsetpos = pos + (projmeta.projectile == 'owl_projectile' and Vector3.zero or projmeta.fromPositionOffset)
+						local balloons = plr.Character:GetAttribute('InflatedBalloons')
+						local playerGravity = workspace.Gravity
+	
+						if balloons and balloons > 0 then
+							playerGravity = (workspace.Gravity * (1 - ((balloons >= 4 and 1.2 or balloons >= 3 and 1 or 0.975))))
+						end
+	
+						if plr.Character.PrimaryPart:FindFirstChild('rbxassetid://8200754399') then
+							playerGravity = 6
+						end
+
+						if plr.Player and plr.Player:GetAttribute('IsOwlTarget') then
+							for _, owl in collectionService:GetTagged('Owl') do
+								if owl:GetAttribute('Target') == plr.Player.UserId and owl:GetAttribute('Status') == 2 then
+									playerGravity = 0
+									break
+								end
+							end
+						end
+
+						if store.hand and store.hand.tool then
+							if store.hand.tool.Name:find("spellbook") then
+								local targetPos = plr.RootPart.Position
+								local selfPos = lplr.Character.PrimaryPart.Position
+								local expectedTime = (selfPos - targetPos).Magnitude / 160
+								targetPos = targetPos + (plr.RootPart.Velocity * expectedTime)
+								return {
+									initialVelocity = (targetPos - selfPos).Unit * 160,
+									positionFrom = offsetpos,
+									deltaT = 2,
+									gravitationalAcceleration = 1,
+									drawDurationSeconds = 5
+								}
+							elseif store.hand.tool.Name:find("chakram") then
+								local targetPos = plr.RootPart.Position
+								local selfPos = lplr.Character.PrimaryPart.Position
+								local expectedTime = (selfPos - targetPos).Magnitude / 80
+								targetPos = targetPos + (plr.RootPart.Velocity * expectedTime)
+								return {
+									initialVelocity = (targetPos - selfPos).Unit * 80,
+									positionFrom = offsetpos,
+									deltaT = 2,
+									gravitationalAcceleration = 1,
+									drawDurationSeconds = 5
+								}
+							end
+						end
+	
+						local newlook = CFrame.new(offsetpos, plr[TargetPart.Value].Position) * CFrame.new(projmeta.projectile == 'owl_projectile' and Vector3.zero or Vector3.new(bedwars.BowConstantsTable.RelX, bedwars.BowConstantsTable.RelY, bedwars.BowConstantsTable.RelZ))
+						
+						local eps = 1e-9
+						local function isZero(d)
+							return (d > -eps and d < eps)
+						end
+						local function cuberoot(x)
+							return (x > 0) and math.pow(x, (1 / 3)) or -math.pow(math.abs(x), (1 / 3))
+						end
+						local function solveQuadric(c0, c1, c2)
+							local s0, s1
+							local p, q, D
+							p = c1 / (2 * c0)
+							q = c2 / c0
+							D = p * p - q
+							if isZero(D) then
+								s0 = -p
+								return s0
+							elseif (D < 0) then
+								return
+							else
+								local sqrt_D = math.sqrt(D)
+								s0 = sqrt_D - p
+								s1 = -sqrt_D - p
+								return s0, s1
+							end
+						end
+						local function solveCubic(c0, c1, c2, c3)
+							local s0, s1, s2
+							local num, sub
+							local A, B, C
+							local sq_A, p, q
+							local cb_p, D
+							if c0 == 0 then
+								return solveQuadric(c1, c2, c3)
+							end
+							A = c1 / c0
+							B = c2 / c0
+							C = c3 / c0
+							sq_A = A * A
+							p = (1 / 3) * (-(1 / 3) * sq_A + B)
+							q = 0.5 * ((2 / 27) * A * sq_A - (1 / 3) * A * B + C)
+							cb_p = p * p * p
+							D = q * q + cb_p
+							if isZero(D) then
+								if isZero(q) then
+									s0 = 0
+									num = 1
+								else
+									local u = cuberoot(-q)
+									s0 = 2 * u
+									s1 = -u
+									num = 2
+								end
+							elseif (D < 0) then
+								local phi = (1 / 3) * math.acos(-q / math.sqrt(-cb_p))
+								local t = 2 * math.sqrt(-p)
+								s0 = t * math.cos(phi)
+								s1 = -t * math.cos(phi + math.pi / 3)
+								s2 = -t * math.cos(phi - math.pi / 3)
+								num = 3
+							else
+								local sqrt_D = math.sqrt(D)
+								local u = cuberoot(sqrt_D - q)
+								local v = -cuberoot(sqrt_D + q)
+								s0 = u + v
+								num = 1
+							end
+							sub = (1 / 3) * A
+							if (num > 0) then s0 = s0 - sub end
+							if (num > 1) then s1 = s1 - sub end
+							if (num > 2) then s2 = s2 - sub end
+							return s0, s1, s2
+						end
+						local function solveQuartic(c0, c1, c2, c3, c4)
+							local s0, s1, s2, s3
+							local coeffs = {}
+							local z, u, v, sub
+							local A, B, C, D
+							local sq_A, p, q, r
+							local num
+							A = c1 / c0
+							B = c2 / c0
+							C = c3 / c0
+							D = c4 / c0
+							sq_A = A * A
+							p = -0.375 * sq_A + B
+							q = 0.125 * sq_A * A - 0.5 * A * B + C
+							r = -(3 / 256) * sq_A * sq_A + 0.0625 * sq_A * B - 0.25 * A * C + D
+							if isZero(r) then
+								coeffs[3] = q
+								coeffs[2] = p
+								coeffs[1] = 0
+								coeffs[0] = 1
+								local results = {solveCubic(coeffs[0], coeffs[1], coeffs[2], coeffs[3])}
+								num = #results
+								s0, s1, s2 = results[1], results[2], results[3]
+							else
+								coeffs[3] = 0.5 * r * p - 0.125 * q * q
+								coeffs[2] = -r
+								coeffs[1] = -0.5 * p
+								coeffs[0] = 1
+								s0, s1, s2 = solveCubic(coeffs[0], coeffs[1], coeffs[2], coeffs[3])
+								z = s0
+								u = z * z - r
+								v = 2 * z - p
+								if isZero(u) then
+									u = 0
+								elseif (u > 0) then
+									u = math.sqrt(u)
+								else
+									return
+								end
+								if isZero(v) then
+									v = 0
+								elseif (v > 0) then
+									v = math.sqrt(v)
+								else
+									return
+								end
+								coeffs[2] = z - u
+								coeffs[1] = q < 0 and -v or v
+								coeffs[0] = 1
+								local results = {solveQuadric(coeffs[0], coeffs[1], coeffs[2])}
+								num = #results
+								s0, s1 = results[1], results[2]
+								coeffs[2] = z + u
+								coeffs[1] = q < 0 and v or -v
+								coeffs[0] = 1
+								if (num == 0) then
+									local results2 = {solveQuadric(coeffs[0], coeffs[1], coeffs[2])}
+									num = num + #results2
+									s0, s1 = results2[1], results2[2]
+								end
+								if (num == 1) then
+									local results2 = {solveQuadric(coeffs[0], coeffs[1], coeffs[2])}
+									num = num + #results2
+									s1, s2 = results2[1], results2[2]
+								end
+								if (num == 2) then
+									local results2 = {solveQuadric(coeffs[0], coeffs[1], coeffs[2])}
+									num = num + #results2
+									s2, s3 = results2[1], results2[2]
+								end
+							end
+							sub = 0.25 * A
+							if (num > 0) then s0 = s0 - sub end
+							if (num > 1) then s1 = s1 - sub end
+							if (num > 2) then s2 = s2 - sub end
+							if (num > 3) then s3 = s3 - sub end
+							return {s3, s2, s1, s0}
+						end
+						
+						local targetVelocity = projmeta.projectile == 'telepearl' and Vector3.zero or plr[TargetPart.Value].Velocity
+						local disp = plr[TargetPart.Value].Position - newlook.p
+						local p, q, r = targetVelocity.X, targetVelocity.Y, targetVelocity.Z
+						local h, j, k = disp.X, disp.Y, disp.Z
+						local l = -.5 * gravity
+						
+						if math.abs(q) > 0.01 and playerGravity and playerGravity > 0 then
+							local estTime = (disp.Magnitude / projSpeed)
+							local origq = q
+							for i = 1, 100 do
+								q = origq - (.5 * playerGravity) * estTime
+								local velo = targetVelocity * 0.016
+								local ray = workspace:Raycast(Vector3.new(plr[TargetPart.Value].Position.X, plr[TargetPart.Value].Position.Y, plr[TargetPart.Value].Position.Z), 
+									Vector3.new(velo.X, (q * estTime) - plr.HipHeight, velo.Z), rayCheck)
+								if ray then
+									local newTarget = ray.Position + Vector3.new(0, plr.HipHeight, 0)
+									estTime = estTime - math.sqrt(((plr[TargetPart.Value].Position - newTarget).Magnitude * 2) / playerGravity)
+									plr[TargetPart.Value].Position = newTarget
+									j = (plr[TargetPart.Value].Position - newlook.p).Y
+									q = 0
+									break
+								else
+									break
+								end
+							end
+						end
+						
+						local solutions = solveQuartic(
+							l*l,
+							-2*q*l,
+							q*q - 2*j*l - projSpeed*projSpeed + p*p + r*r,
+							2*j*q + 2*h*p + 2*k*r,
+							j*j + h*h + k*k
+						)
+						
+						if solutions then
+							local posRoots = {}
+							for _, v in solutions do
+								if v > 0 then
+									table.insert(posRoots, v)
+								end
+							end
+							posRoots[1] = posRoots[1]
+							
+							if posRoots[1] then
+								local t = posRoots[1]
+								local d = (h + p*t)/t
+								local e = (j + q*t - l*t*t)/t
+								local f = (k + r*t)/t
+								local calc = newlook.p + Vector3.new(d, e, f)
+								
+								if targetinfo and targetinfo.Targets then
+									targetinfo.Targets[plr] = tick() + 1
+								end
+								
+								hovering = false
+								return {
+									initialVelocity = CFrame.new(newlook.Position, calc).LookVector * projSpeed,
+									positionFrom = offsetpos,
+									deltaT = lifetime,
+									gravitationalAcceleration = gravity,
+									drawDurationSeconds = 5
+								}
+							end
+						elseif gravity == 0 then
+							local t = (disp.Magnitude / projSpeed)
+							local d = (h + p*t)/t
+							local e = (j + q*t - l*t*t)/t
+							local f = (k + r*t)/t
+							local calc = newlook.p + Vector3.new(d, e, f)
+							
+							if targetinfo and targetinfo.Targets then
+								targetinfo.Targets[plr] = tick() + 1
+							end
+							
+							hovering = false
+							return {
+								initialVelocity = CFrame.new(newlook.Position, calc).LookVector * projSpeed,
+								positionFrom = offsetpos,
+								deltaT = lifetime,
+								gravitationalAcceleration = gravity,
+								drawDurationSeconds = 5
+							}
+						end
+					end
+	
+					hovering = false
+					return old(...)
+				end
+			else
+				bedwars.ProjectileController.calculateImportantLaunchValues = old
+				if targetOutline then
+					targetOutline:Destroy()
+					targetOutline = nil
+				end
+				selectedTarget = nil
+				for i,v in pairs(CoreConnections) do
+					pcall(function() v:Disconnect() end)
+				end
+				table.clear(CoreConnections)
+			end
+		end,
+		Tooltip = 'Silently adjusts your aim towards the enemy. Click a player to lock onto them (red outline).'
+	})
+	
+	Targets = AeroPA:CreateTargets({
+		Players = true,
+		Walls = true
+	})
+	TargetPart = AeroPA:CreateDropdown({
+		Name = 'Part',
+		List = {'RootPart', 'Head'}
+	})
+	FOV = AeroPA:CreateSlider({
+		Name = 'FOV',
+		Min = 1,
+		Max = 1000,
+		Default = 1000
+	})
+	Range = AeroPA:CreateSlider({
+		Name = 'Range',
+		Min = 10,
+		Max = 500,
+		Default = 100,
+		Tooltip = 'Maximum distance for target locking'
+	})
+	TargetVisualiser = AeroPA:CreateToggle({
+		Name = "Target Visualiser", 
+		Default = true
+	})
+	OtherProjectiles = AeroPA:CreateToggle({
+		Name = 'Other Projectiles',
+		Default = true,
+		Function = function(call)
+			if Blacklist then
+				Blacklist.Object.Visible = call
+			end
+		end
+	})
+	Blacklist = AeroPA:CreateTextList({
 		Name = 'Blacklist',
 		Darker = true,
 		Default = {'telepearl'}
@@ -6532,13 +6988,17 @@ run(function()
 			end, 12, false)
 		end,
 		blood_assassin = function()
+			local hitPlayers = {} 
+			
 			AutoKit:Clean(vapeEvents.EntityDamageEvent.Event:Connect(function(damageTable)
 				if not entitylib.isAlive then return end
 				
 				local attacker = playersService:GetPlayerFromCharacter(damageTable.fromEntity)
 				local victim = playersService:GetPlayerFromCharacter(damageTable.entityInstance)
-				
+			
 				if attacker == lplr and victim and victim ~= lplr then
+					hitPlayers[victim] = true
+					
 					local storeState = bedwars.Store:getState()
 					local activeContract = storeState.Kit.activeContract
 					local availableContracts = storeState.Kit.availableContracts or {}
@@ -6562,17 +7022,20 @@ run(function()
 					local activeContract = storeState.Kit.activeContract
 					local availableContracts = storeState.Kit.availableContracts or {}
 					
-					if not activeContract and availableContracts and #availableContracts > 0 then
-						local bestContract = availableContracts[1]
+					if not activeContract and #availableContracts > 0 then
+						local bestContract = nil
+						local highestDifficulty = 0
+						
 						for _, contract in availableContracts do
-							if contract and contract.difficulty and bestContract and bestContract.difficulty then
-								if contract.difficulty > bestContract.difficulty then
+							if hitPlayers[contract.target] then
+								if contract.difficulty > highestDifficulty then
 									bestContract = contract
+									highestDifficulty = contract.difficulty
 								end
 							end
 						end
 						
-						if bestContract and bestContract.id then
+						if bestContract then
 							bedwars.Client:Get('BloodAssassinSelectContract'):SendToServer({
 								contractId = bestContract.id
 							})
@@ -6582,6 +7045,8 @@ run(function()
 				end
 				task.wait(1)
 			until not AutoKit.Enabled
+			
+			table.clear(hitPlayers)
 		end,
 		block_kicker = function()
 			local old = bedwars.BlockKickerKitController.getKickBlockProjectileOriginPosition
@@ -12766,3 +13231,4 @@ run(function()
         Tooltip = 'Teleports you to an empty server of the current game'
     })
 end)
+

@@ -16,9 +16,9 @@ local function decodeBase64(data)
     end))
 end
 
-local encryptedRepo = "d3JlYWxhZXJv" 
+local encryptedRepo = "U3luaW94eno=" 
 local encryptedRepoName = "TmV3QWVyb1Y0" 
-local encryptedAccountUrl = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3dyZWFsYWVyby93aGl0ZWxpc3RjaGVjay9tYWluL0FjY291bnRTeXN0ZW0ubHVh"
+local encryptedAccountUrl = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL1N5bmlveHp6L3doaXRlbGlzdGNoZWNrL3JlZnMvaGVhZHMvbWFpbi9BY2NvdW50U3lzdGVtLmx1YQ=="
 
 local EXPECTED_REPO_OWNER = decodeBase64(encryptedRepo)
 local EXPECTED_REPO_NAME = decodeBase64(encryptedRepoName)

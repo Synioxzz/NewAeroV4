@@ -1,4 +1,5 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local run = function(func) func() end
 local cloneref = cloneref or function(obj) return obj end
 
@@ -234,29 +235,4 @@ run(function()
     if not ok then
         warn("CustomClanTag error:", err)
     end
-end)
-
-run(function()
-    local Players = game:GetService("Players")
-    local player = Players.LocalPlayer
-    local PlayerLevel
-    local level
-
-    PlayerLevel = vape.Categories.Utility:CreateModule({
-        Name = "SetPlayerLevel",
-        Tooltip = "Sets your player level to whatever u want (just client side)",
-        Function = function()
-            player:SetAttribute("PlayerLevel", level.Value)
-        end
-    })
-
-    level = PlayerLevel:CreateSlider({
-        Name = "Player Level",
-        Min = 1,
-        Max = 1000,
-        Default = 100,
-        Function = function(val)
-            player:SetAttribute("PlayerLevel", val)
-        end
-    })
 end)

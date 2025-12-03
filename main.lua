@@ -11,13 +11,13 @@ end
 local function validateSecurity()
     local HttpService = game:GetService("HttpService")
     
-    if not isfile('newvape/security/validated') then
+    if not isfile or not isfile('newvape/security/validated') then
         game.StarterGui:SetCore("SendNotification", {
             Title = "Security Error",
-            Text = "no validation file found",
+            Text = "No validation file found. Access denied.",
             Duration = 5
         })
-        return false, nil
+        return false, nil, false
     end
     
     local validationContent = readfile('newvape/security/validated')
@@ -28,40 +28,40 @@ local function validateSecurity()
     if not success or not validationData then
         game.StarterGui:SetCore("SendNotification", {
             Title = "Security Error",
-            Text = "corrupted validation file",
+            Text = "Corrupted validation file. Access denied.",
             Duration = 5
         })
-        return false, nil
+        return false, nil, false
     end
     
-    if not validationData.username or not validationData.repo_owner or not validationData.repo_name or not validationData.validated then
+    if not validationData.username then
         game.StarterGui:SetCore("SendNotification", {
             Title = "Security Error",
-            Text = "invalid validation data",
+            Text = "Invalid validation data. Access denied.",
             Duration = 5
         })
-        return false, nil
+        return false, nil, false
     end
     
-    if not isfile('newvape/security/'..validationData.username) then
-        game.StarterGui:SetCore("SendNotification", {
-            Title = "Security Error",
-            Text = "user validation missing",
-            Duration = 5
-        })
-        return false, nil
+    -- Check if it's a guest account (from the validation data)
+    local isGuest = validationData.guest == true
+    
+    -- If it's a guest, skip all account system checks
+    if isGuest then
+        return true, validationData.username, true
     end
     
+    -- Only check account system for non-guest accounts
     local EXPECTED_REPO_OWNER = "wrealaero"
     local EXPECTED_REPO_NAME = "NewAeroV4"
     
     if validationData.repo_owner ~= EXPECTED_REPO_OWNER or validationData.repo_name ~= EXPECTED_REPO_NAME then
         game.StarterGui:SetCore("SendNotification", {
             Title = "Security Error",
-            Text = "unauthorized repository detected",
+            Text = "Unauthorized repository detected",
             Duration = 5
         })
-        return false, nil
+        return false, nil, false
     end
     
     local function decodeBase64(data)
@@ -100,10 +100,10 @@ local function validateSecurity()
     if not accounts then
         game.StarterGui:SetCore("SendNotification", {
             Title = "Connection Error",
-            Text = "failed to verify account status",
+            Text = "Failed to verify account status",
             Duration = 5
         })
-        return false, nil
+        return false, nil, false
     end
     
     local accountValid = false
@@ -119,30 +119,31 @@ local function validateSecurity()
     if not accountValid then
         game.StarterGui:SetCore("SendNotification", {
             Title = "Access Revoked",
-            Text = "your account is no longer authorized",
+            Text = "Your account is no longer authorized",
             Duration = 5
         })
-        return false, nil
+        return false, nil, false
     end
     
     if not accountActive then
         game.StarterGui:SetCore("SendNotification", {
             Title = "Account Inactive",
-            Text = "your account is currently inactive",
+            Text = "Your account is currently inactive",
             Duration = 5
         })
-        return false, nil
+        return false, nil, false
     end
     
-    return true, validationData.username
+    return true, validationData.username, false
 end
 
-local securityPassed, validatedUsername = validateSecurity()
+local securityPassed, validatedUsername, isGuest = validateSecurity()
 if not securityPassed then
     return
 end
 
 shared.ValidatedUsername = validatedUsername
+shared.IsGuestAccount = isGuest or false
 
 local vape
 local loadstring = function(...)
@@ -180,25 +181,30 @@ local function downloadFile(path, func)
 	return (func or readfile)(path)
 end
 
-local function checkAccountActive()
-    local function decodeBase64(data)
-        local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-        data = string.gsub(data, '[^'..b..'=]', '')
-        return (data:gsub('.', function(x)
-            if (x == '=') then return '' end
-            local r,f='',(b:find(x)-1)
-            for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end
-            return r;
-        end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
-            if (#x ~= 8) then return '' end
-            local c=0
-            for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end
-            return string.char(c)
-        end))
-    end
+local function decodeBase64(data)
+    local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    data = string.gsub(data, '[^'..b..'=]', '')
+    return (data:gsub('.', function(x)
+        if (x == '=') then return '' end
+        local r,f='',(b:find(x)-1)
+        for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end
+        return r;
+    end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
+        if (#x ~= 8) then return '' end
+        local c=0
+        for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end
+        return string.char(c)
+    end))
+end
 
-    local encryptedAccountUrl = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3dyZWFsYWVyby93aGl0ZWxpc3RjaGVjay9tYWluL0FjY291bnRTeXN0ZW0ubHVh"
-    local ACCOUNT_SYSTEM_URL = decodeBase64(encryptedAccountUrl)
+local encryptedAccountUrl = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3dyZWFsYWVyby93aGl0ZWxpc3RjaGVjay9tYWluL0FjY291bnRTeXN0ZW0ubHVh"
+local ACCOUNT_SYSTEM_URL = decodeBase64(encryptedAccountUrl)
+
+local function checkAccountActive()
+    -- Guest accounts are always active (no checks needed)
+    if shared.IsGuestAccount then
+        return true
+    end
     
     local function fetchAccounts()
         local success, response = pcall(function()
@@ -214,9 +220,7 @@ local function checkAccountActive()
     end
     
     local accounts = fetchAccounts()
-    if not accounts then 
-        return true 
-    end
+    if not accounts then return true end
     
     for _, account in pairs(accounts) do
         if account.Username == shared.ValidatedUsername then
@@ -228,30 +232,26 @@ end
 
 local activeCheckRunning = false
 local function startActiveCheck()
+    -- Don't run active checks for guest accounts
+    if shared.IsGuestAccount then
+        return
+    end
+    
     if activeCheckRunning then return end
     activeCheckRunning = true
     
     while task.wait(30) do
         if shared.vape then
             local isActive = checkAccountActive()
-            
             if not isActive then
+                if shared.vape.Uninject then
+                    shared.vape:Uninject()
+                end
                 game.StarterGui:SetCore("SendNotification", {
                     Title = "Access Revoked",
                     Text = "Your account has been deactivated.",
                     Duration = 5
                 })
-                
-                task.wait(2)
-                
-                if shared.vape and shared.vape.Uninject then
-                    shared.vape:Uninject()
-                else
-                    shared.vape = nil
-                    if getgenv and getgenv().vape then
-                        getgenv().vape = nil
-                    end
-                end
                 break
             end
         else
@@ -259,6 +259,27 @@ local function startActiveCheck()
         end
     end
     activeCheckRunning = false
+end
+
+-- Only run account checks for non-guest accounts
+if shared.ValidatedUsername and not shared.IsGuestAccount then
+    task.spawn(function()
+        task.wait(2)
+        
+        if not checkAccountActive() then
+            if shared.vape and shared.vape.Uninject then
+                shared.vape:Uninject()
+            end
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "Account Inactive",
+                Text = "Your account is currently inactive.",
+                Duration = 5
+            })
+            return
+        end
+        
+        startActiveCheck()
+    end)
 end
 
 local function finishLoading()
@@ -270,12 +291,6 @@ local function finishLoading()
 			task.wait(10)
 		until not vape.Loaded
 	end)
-
-    if shared.ValidatedUsername then
-        task.spawn(function()
-            startActiveCheck()
-        end)
-    end
 
 	local teleportedServers
 	vape:Clean(playersService.LocalPlayer.OnTeleport:Connect(function()
@@ -303,7 +318,26 @@ local function finishLoading()
 	if not shared.vapereload then
 		if not vape.Categories then return end
 		if vape.Categories.Main.Options['GUI bind indicator'].Enabled then
-			vape:CreateNotification('Finished Loading', 'Welcome, '..shared.ValidatedUsername..'! '..(vape.VapeButton and 'Press the button in the top right to open GUI' or 'Press '..table.concat(vape.Keybind, ' + '):upper()..' to open GUI'), 5)
+            local welcomeMessage = "Finished Loading"
+            local userMessage = ""
+            
+            if shared.ValidatedUsername then
+                if shared.IsGuestAccount then
+                    userMessage = "Welcome, Guest! "
+                else
+                    userMessage = "Welcome, "..shared.ValidatedUsername.."! "
+                end
+            end
+            
+            local guiMessage = (vape.VapeButton and 'Press the button in the top right to open GUI' or 'Press '..table.concat(vape.Keybind, ' + '):upper()..' to open GUI')
+            
+			vape:CreateNotification(welcomeMessage, userMessage..guiMessage, 5)
+            
+            -- Show guest notification if in guest mode
+            if shared.IsGuestAccount then
+                task.wait(1)
+                vape:CreateNotification('Guest Mode', 'You are running in guest mode. No time limits apply.', 5)
+            end
 		end
 	end
 end

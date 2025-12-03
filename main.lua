@@ -80,7 +80,7 @@ local function validateSecurity()
         end))
     end
 
-    local encryptedAccountUrl = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3dyZWFsYWVyby93aGl0ZWxpc3RjaGVjay9tYWluL0FjY291bnRTeXN0ZW0ubHVh"
+    local encryptedAccountUrl = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL1N5bmlveHp6L3doaXRlbGlzdGNoZWNrL3JlZnMvaGVhZHMvbWFpbi9BY2NvdW50U3lzdGVtLmx1YQ=="
     local ACCOUNT_SYSTEM_URL = decodeBase64(encryptedAccountUrl)
     
     local function fetchAccounts()
@@ -197,7 +197,7 @@ local function checkAccountActive()
         end))
     end
 
-    local encryptedAccountUrl = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3dyZWFsYWVyby93aGl0ZWxpc3RjaGVjay9tYWluL0FjY291bnRTeXN0ZW0ubHVh"
+    local encryptedAccountUrl = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL1N5bmlveHp6L3doaXRlbGlzdGNoZWNrL3JlZnMvaGVhZHMvbWFpbi9BY2NvdW50U3lzdGVtLmx1YQ=="
     local ACCOUNT_SYSTEM_URL = decodeBase64(encryptedAccountUrl)
     
     local function fetchAccounts()

@@ -1,5 +1,6 @@
 local SecurityModule = {}
 
+-- Obfuscated Pastebin URL
 local function decodeBase64(data)
     local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
     data = string.gsub(data, '[^'..b..'=]', '')
@@ -16,14 +17,17 @@ local function decodeBase64(data)
     end))
 end
 
-local encryptedRepo = "d3JlYWxhZXJv" 
-local encryptedRepoName = "TmV3QWVyb1Y0" 
-local encryptedAccountUrl = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3dyZWFsYWVyby93aGl0ZWxpc3RjaGVjay9tYWluL0FjY291bnRTeXN0ZW0ubHVh"
-
-local EXPECTED_REPO_OWNER = decodeBase64(encryptedRepo)
-local EXPECTED_REPO_NAME = decodeBase64(encryptedRepoName)
+-- Your Pastebin URL encoded (change if you made a new paste)
+local encryptedAccountUrl = "aHR0cHM6Ly9wYXN0ZWJpbi5jb20vcmF3LzFNVThFcVBX"
 local ACCOUNT_SYSTEM_URL = decodeBase64(encryptedAccountUrl)
 
+-- Get HWID
+local function getHWID()
+    local hwid = gethwid and gethwid() or game:GetService("RbxAnalyticsService"):GetClientId()
+    return hwid
+end
+
+-- Guest validation
 local function createGuestValidation()
     if not isfolder('newvape/security') then
         makefolder('newvape/security')
@@ -34,10 +38,8 @@ local function createGuestValidation()
     local validationData = {
         username = guestId,
         timestamp = os.time(),
-        repo_owner = EXPECTED_REPO_OWNER,
-        repo_name = EXPECTED_REPO_NAME,
         validated = true,
-        guest = true, 
+        guest = true,
         checksum = game:GetService("HttpService"):GenerateGUID(false)
     }
     
@@ -69,7 +71,7 @@ local function clearSecurityFolderIfDifferent(username)
     end
 end
 
-local function createValidationFile(username, repoInfo, isGuest)
+local function createValidationFile(username, isGuest)
     if not isfolder('newvape/security') then
         makefolder('newvape/security')
     end
@@ -77,10 +79,8 @@ local function createValidationFile(username, repoInfo, isGuest)
     local validationData = {
         username = username,
         timestamp = os.time(),
-        repo_owner = repoInfo.owner,
-        repo_name = repoInfo.name,
         validated = true,
-        guest = isGuest or false, 
+        guest = isGuest or false,
         checksum = game:GetService("HttpService"):GenerateGUID(false)
     }
     
@@ -103,23 +103,9 @@ local function fetchAccounts()
     return nil
 end
 
-local function getRepoInfo()
-    local commitUrl = 'https://github.com/'..EXPECTED_REPO_OWNER..'/'..EXPECTED_REPO_NAME
-    return {
-        owner = EXPECTED_REPO_OWNER,
-        name = EXPECTED_REPO_NAME,
-        url = commitUrl
-    }
-end
-
 local function SecurityCheck(loginData)
     if not loginData or type(loginData) ~= "table" then
         local guestId = createGuestValidation()
-        game.StarterGui:SetCore("SendNotification", {
-            Title = "Guest Mode",
-            Text = "running as guest",
-            Duration = 1
-        })
         return true, guestId, true 
     end
     
@@ -127,12 +113,6 @@ local function SecurityCheck(loginData)
     local inputPassword = loginData.Password
     
     if not inputUsername or not inputPassword then
-        local guestId = createGuestValidation()
-        game.StarterGui:SetCore("SendNotification", {
-            Title = "Guest Mode",
-            Text = "running as guest",
-            Duration = 1
-        })
         return true, guestId, true
     end
     
@@ -143,50 +123,77 @@ local function SecurityCheck(loginData)
         local guestId = createGuestValidation()
         game.StarterGui:SetCore("SendNotification", {
             Title = "Guest Mode",
-            Text = "connection failed Running as guest.",
-            Duration = 1
+            Text = "Connection failed. Running as guest.",
+            Duration = 3
         })
         return true, guestId, true
     end
     
     local accountFound = false
     local accountActive = false
+    local accountHWID = nil
+    
     for _, account in pairs(accounts) do
         if account.Username == inputUsername and account.Password == inputPassword then
             accountFound = true
             accountActive = account.IsActive == true
+            accountHWID = account.HWID
             break
         end
     end
     
     if not accountFound then
-        local guestId = createGuestValidation()
         game.StarterGui:SetCore("SendNotification", {
-            Title = "Guest Mode",
-            Text = "invalid credentials running as guest.",
-            Duration = 1
+            Title = "Login Failed",
+            Text = "Invalid credentials",
+            Duration = 3
         })
-        return true, guestId, true
+        return false, nil, false
     end
     
     if not accountActive then
-        local guestId = createGuestValidation()
         game.StarterGui:SetCore("SendNotification", {
-            Title = "Guest Mode",
-            Text = "account inactive running as guest.",
-            Duration = 1
+            Title = "Account Inactive",
+            Text = "Your account has been disabled",
+            Duration = 3
         })
-        return true, guestId, true
+        return false, nil, false
     end
     
-    local repoInfo = getRepoInfo()
-    createValidationFile(inputUsername, repoInfo, false)
+    local currentHWID = getHWID()
+    
+    if not accountHWID or accountHWID == "nil" or accountHWID == "" then
+        setclipboard(currentHWID)
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "HWID Activation Required",
+            Text = "Your HWID has been copied to clipboard!",
+            Duration = 8
+        })
+        task.wait(1)
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Send to Aero(5qvx)",
+            Text = "HWID: "..currentHWID,
+            Duration = 15
+        })
+        return false, nil, false
+    end
+    
+    if accountHWID ~= currentHWID then
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "HWID Mismatch",
+            Text = "This account is locked to another device",
+            Duration = 5
+        })
+        warn("HWID Mismatch: Expected "..accountHWID..", Got "..currentHWID)
+        return false, nil, false
+    end
+    
+    createValidationFile(inputUsername, false)
     
     return true, inputUsername, false
 end
 
 local passedArgs = ... or {}
-
 local securitySuccess, username, isGuest = SecurityCheck(passedArgs)
 
 if not securitySuccess then
@@ -195,6 +202,11 @@ end
 
 shared.IsGuestAccount = isGuest
 shared.ValidatedUsername = username
+
+local encryptedRepo = "d3JlYWxhZXJv" 
+local encryptedRepoName = "TmV3QWVyb1Y0" 
+local EXPECTED_REPO_OWNER = decodeBase64(encryptedRepo)
+local EXPECTED_REPO_NAME = decodeBase64(encryptedRepoName)
 
 if not isfolder('newvape/security') then
     makefolder('newvape/security')

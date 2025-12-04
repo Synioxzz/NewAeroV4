@@ -1,6 +1,7 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 
 local run = function(func)
 	func()
@@ -2752,6 +2753,7 @@ run(function()
     local AnimationSpeed
     local AnimationTween
     local Limit
+	local SwingAngleSlider
     local LegitAura
     local SyncHits
     local lastAttackTime = 0
@@ -2853,63 +2855,40 @@ run(function()
     local lastSwingServerTime = 0
     local lastSwingServerTimeDelta = 0
 
-	local function createRangeCircle()
-		local suc, err = pcall(function()
-			if RangeCirclePart then
-				RangeCirclePart:Destroy()
-				RangeCirclePart = nil
-			end
-			
-			if (not shared.CheatEngineMode) then
-				RangeCirclePart = Instance.new("Part")
-				RangeCirclePart.Shape = Enum.PartType.Cylinder
-				RangeCirclePart.Material = Enum.Material.Neon
-				RangeCirclePart.CanCollide = false
-				RangeCirclePart.Anchored = true
-				RangeCirclePart.CanQuery = false
-				RangeCirclePart.CanTouch = false
-				RangeCirclePart.CastShadow = false
-				RangeCirclePart.Transparency = 0.5
-				RangeCirclePart.TopSurface = Enum.SurfaceType.Smooth
-				RangeCirclePart.BottomSurface = Enum.SurfaceType.Smooth
-				
-				local diameter = AttackRange.Value * 2
-				RangeCirclePart.Size = Vector3.new(0.2, diameter, diameter)
-				
-				RangeCirclePart.Orientation = Vector3.new(0, 0, 90)
-				
-				if shared.RiseMode and GuiLibrary.GUICoreColor and GuiLibrary.GUICoreColorChanged then
-					RangeCirclePart.Color = GuiLibrary.GUICoreColor
-					GuiLibrary.GUICoreColorChanged.Event:Connect(function()
-						if RangeCirclePart then
-							RangeCirclePart.Color = GuiLibrary.GUICoreColor
-						end
-					end)
-				else
-					RangeCirclePart.Color = Color3.fromHSV(BoxSwingColor["Hue"], BoxSwingColor["Sat"], BoxSwingColor.Value)
-				end
-				
-				RangeCirclePart:SetAttribute("gamecore_GameQueryIgnore", true)
-				
-				if Killaura.Enabled then
-					RangeCirclePart.Parent = gameCamera
-					
-					if entitylib.isAlive and entitylib.character.HumanoidRootPart then
-						RangeCirclePart.Position = entitylib.character.HumanoidRootPart.Position - Vector3.new(0, entitylib.character.Humanoid.HipHeight + 2, 0)
-					end
-				end
-			end
-		end)
-		if (not suc) then
-			pcall(function()
-				if RangeCirclePart then
-					RangeCirclePart:Destroy()
-					RangeCirclePart = nil
-				end
-				InfoNotification("Killaura - Range Visualiser Circle", "There was an error creating the circle: " .. tostring(err), 3)
-			end)
-		end
-	end
+    local function createRangeCircle()
+        local suc, err = pcall(function()
+            if (not shared.CheatEngineMode) then
+                RangeCirclePart = Instance.new("MeshPart")
+                RangeCirclePart.MeshId = "rbxassetid://3726303797"
+                if shared.RiseMode and GuiLibrary.GUICoreColor and GuiLibrary.GUICoreColorChanged then
+                    RangeCirclePart.Color = GuiLibrary.GUICoreColor
+                    GuiLibrary.GUICoreColorChanged.Event:Connect(function()
+                        RangeCirclePart.Color = GuiLibrary.GUICoreColor
+                    end)
+                else
+                    RangeCirclePart.Color = Color3.fromHSV(BoxSwingColor["Hue"], BoxSwingColor["Sat"], BoxSwingColor.Value)
+                end
+                RangeCirclePart.CanCollide = false
+                RangeCirclePart.Anchored = true
+                RangeCirclePart.Material = Enum.Material.Neon
+                RangeCirclePart.Size = Vector3.new(SwingRange.Value * 0.7, 0.01, SwingRange.Value * 0.7)
+                if Killaura.Enabled then
+                    RangeCirclePart.Parent = gameCamera
+                end
+                RangeCirclePart:SetAttribute("gamecore_GameQueryIgnore", true)
+            end
+        end)
+        if (not suc) then
+            pcall(function()
+                if RangeCirclePart then
+                    RangeCirclePart:Destroy()
+                    RangeCirclePart = nil
+                end
+                InfoNotification("Killaura - Range Visualiser Circle", "There was an error creating the circle. Disabling...", 2)
+            end)
+        end
+    end
+
 	local function getAttackData()
 		if Mouse.Enabled then
 			local mousePressed = inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
@@ -3056,10 +3035,7 @@ run(function()
                 repeat
                     pcall(function()
                         if entitylib.isAlive and entitylib.character.HumanoidRootPart then
-							if RangeCirclePart and entitylib.isAlive and entitylib.character.HumanoidRootPart then
-								local rootPos = entitylib.character.HumanoidRootPart.Position
-								RangeCirclePart.CFrame = CFrame.new(rootPos.X, rootPos.Y - 2.8, rootPos.Z) * CFrame.Angles(0, 0, math.rad(90))
-							end
+                            TweenService:Create(RangeCirclePart, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Position = entitylib.character.HumanoidRootPart.Position - Vector3.new(0, entitylib.character.Humanoid.HipHeight, 0)}):Play()
                         end
                     end)
 
@@ -3088,9 +3064,9 @@ run(function()
 						for _, v in plrs do
 							local delta = (v.RootPart.Position - selfpos)
 							local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+							local swingAngle = SwingAngleSlider and math.rad(SwingAngleSlider.Value) or math.rad(AngleSlider.Value)
 							
-							-- Use the single AngleSlider value (just like Grand Killaura)
-							if angle <= (math.rad(AngleSlider.Value) / 2) then
+							if angle <= (swingAngle / 2) then
 								hasValidTargets = true
 								break
 							end
@@ -3109,9 +3085,8 @@ run(function()
 								for _, v in plrs do
 									local delta = (v.RootPart.Position - selfpos)
 									local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
-									
-									-- Use the single AngleSlider value (just like Grand Killaura)
-									if angle > (math.rad(AngleSlider.Value) / 2) then continue end
+									local swingAngle = SwingAngleSlider and math.rad(SwingAngleSlider.Value) or math.rad(AngleSlider.Value)
+									if angle > (swingAngle / 2) then continue end
 
 									table.insert(attacked, {
 										Entity = v,
@@ -3402,6 +3377,12 @@ run(function()
         Max = 360,
         Default = 360
     })
+	SwingAngleSlider = Killaura:CreateSlider({
+		Name = 'Swing angle',
+		Min = 1,
+		Max = 360,
+		Default = 360
+	})
     UpdateRate = Killaura:CreateSlider({
         Name = 'Update rate',
         Min = 1,

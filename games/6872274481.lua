@@ -5235,30 +5235,6 @@ run(function()
 end)
 
 run(function()
-    local allowedUser = "Sxvy"  
-    local currentUser = shared.ValidatedUsername or game:GetService("Players").LocalPlayer.Name
-    
-    if currentUser ~= allowedUser then
-        local LockedModule = vape.Categories.Blatant:CreateModule({
-            Name = 'SxvyPA [LOCKED]',
-            Function = function(callback)
-                if callback then
-                    if vape and vape.CreateNotification then
-                        vape:CreateNotification("SxvyPA", "This feature is exclusive to " .. allowedUser, 5, "warning")
-                    else
-                        game.StarterGui:SetCore("SendNotification", {
-                            Title = "SxvyPA [LOCKED]",
-                            Text = "This feature is exclusive to " .. allowedUser,
-                            Duration = 5
-                        })
-                    end
-                end
-            end,
-            Tooltip = 'This feature is exclusive to ' .. allowedUser
-        })
-        return 
-    end
-    
     local TargetPart
     local Targets
     local FOV

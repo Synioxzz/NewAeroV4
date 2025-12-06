@@ -1,13 +1,14 @@
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 repeat task.wait() until game:IsLoaded()
 if shared.vape then shared.vape:Uninject() end
 
+-- why do exploits fail to implement anything correctly? Is it really that hard?
 if identifyexecutor then
 	if table.find({'Argon', 'Wave'}, ({identifyexecutor()})[1]) then
 		getgenv().setthreadidentity = nil
 	end
 end
 
+local vape
 local loadstring = function(...)
 	local res, err = loadstring(...)
 	if err and vape then
@@ -41,104 +42,6 @@ local function downloadFile(path, func)
 		writefile(path, res)
 	end
 	return (func or readfile)(path)
-end
-
-local function decodeBase64(data)
-    local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-    data = string.gsub(data, '[^'..b..'=]', '')
-    return (data:gsub('.', function(x)
-        if (x == '=') then return '' end
-        local r,f='',(b:find(x)-1)
-        for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end
-        return r;
-    end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
-        if (#x ~= 8) then return '' end
-        local c=0
-        for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end
-        return string.char(c)
-    end))
-end
-
-local encryptedAccountUrl = "aHR0cHM6Ly9wYXN0ZWJpbi5jb20vcmF3LzFNVThFcVBX"
-local ACCOUNT_SYSTEM_URL = decodeBase64(encryptedAccountUrl)
-
-local function checkAccountActive()
-    if shared.IsGuestAccount then
-        return true
-    end
-    
-    local function fetchAccounts()
-        local success, response = pcall(function()
-            return game:HttpGet(ACCOUNT_SYSTEM_URL)
-        end)
-        if success and response then
-            local accountsTable = loadstring(response)()
-            if accountsTable and accountsTable.Accounts then
-                return accountsTable.Accounts
-            end
-        end
-        return nil
-    end
-    
-    local accounts = fetchAccounts()
-    if not accounts then return true end
-    
-    for _, account in pairs(accounts) do
-        if account.Username == shared.ValidatedUsername then
-            return account.IsActive == true
-        end
-    end
-    return false
-end
-
-local activeCheckRunning = false
-local function startActiveCheck()
-    if shared.IsGuestAccount then
-        return
-    end
-    
-    if activeCheckRunning then return end
-    activeCheckRunning = true
-    
-    while task.wait(30) do
-        if shared.vape then
-            local isActive = checkAccountActive()
-            if not isActive then
-                if shared.vape.Uninject then
-                    shared.vape:Uninject()
-                end
-                game.StarterGui:SetCore("SendNotification", {
-                    Title = "Access Revoked",
-                    Text = "Your account has been deactivated.",
-                    Duration = 5
-                })
-                break
-            end
-        else
-            break
-        end
-    end
-    activeCheckRunning = false
-end
-
-if shared.ValidatedUsername and not shared.IsGuestAccount then
-    task.spawn(function()
-        task.wait(2)
-        
-        if not checkAccountActive() then
-            if shared.vape and shared.vape.Uninject then
-                shared.vape:Uninject()
-            end
-            game.StarterGui:SetCore("SendNotification", {
-                Title = "Account Inactive",
-                Text = "Your account is currently inactive.",
-                Duration = 5
-            })
-            return
-        end
-        
-        startActiveCheck()
-    end)
 end
 
 local function finishLoading()
@@ -177,20 +80,7 @@ local function finishLoading()
 	if not shared.vapereload then
 		if not vape.Categories then return end
 		if vape.Categories.Main.Options['GUI bind indicator'].Enabled then
-            local welcomeMessage = "Finished Loading"
-            local userMessage = ""
-            
-            if shared.ValidatedUsername then
-                if shared.IsGuestAccount then
-                    userMessage = "Welcome, Guest! "
-                else
-                    userMessage = "Welcome, "..shared.ValidatedUsername.."! "
-                end
-            end
-            
-            local guiMessage = (vape.VapeButton and 'Press the button in the top right to open GUI' or 'Press '..table.concat(vape.Keybind, ' + '):upper()..' to open GUI')
-            
-			vape:CreateNotification(welcomeMessage, userMessage..guiMessage, 5)
+			vape:CreateNotification('Finished Loading', vape.VapeButton and 'Press the button in the top right to open GUI' or 'Press '..table.concat(vape.Keybind, ' + '):upper()..' to open GUI', 5)
 		end
 	end
 end

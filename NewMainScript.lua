@@ -20,16 +20,29 @@ local encryptedAccountUrl = "aHR0cHM6Ly9wYXN0ZWJpbi5jb20vcmF3LzFNVThFcVBX"
 local ACCOUNT_SYSTEM_URL = decodeBase64(encryptedAccountUrl)
 
 local function getHWID()
-    local hwid = gethwid and gethwid() or game:GetService("RbxAnalyticsService"):GetClientId()
-    return hwid
+    if gethwid then
+        return gethwid()
+    end
+    
+    if not isfolder('newvape/security') then
+        makefolder('newvape/security')
+    end
+    
+    if isfile('newvape/security/device_id') then
+        return readfile('newvape/security/device_id')
+    end
+    
+    local deviceId = game:GetService("HttpService"):GenerateGUID(false)
+    writefile('newvape/security/device_id', deviceId)
+    return deviceId
 end
+
 local function createGuestValidation()
     if not isfolder('newvape/security') then
         makefolder('newvape/security')
     end
     
     local guestId = "guest_" .. tostring(math.random(10000, 99999)) .. "_" .. tostring(os.time())
-    
     local validationData = {
         username = guestId,
         timestamp = os.time(),
@@ -58,7 +71,7 @@ local function clearSecurityFolderIfDifferent(username)
         
         if not success or (validationData and validationData.username ~= username) then
             for _, file in listfiles('newvape/security') do
-                if isfile(file) then
+                if isfile(file) and not file:find('device_id') then
                     delfile(file)
                 end
             end
@@ -88,20 +101,21 @@ local function fetchAccounts()
     local success, response = pcall(function()
         return game:HttpGet(ACCOUNT_SYSTEM_URL)
     end)
-
+    
     if success and response then
         local accountsTable = loadstring(response)()
         if accountsTable and accountsTable.Accounts then
             return accountsTable.Accounts
         end
     end
+    
     return nil
 end
 
 local function SecurityCheck(loginData)
     if not loginData or type(loginData) ~= "table" then
         local guestId = createGuestValidation()
-        return true, guestId, true 
+        return true, guestId, true
     end
     
     local inputUsername = loginData.Username
@@ -184,7 +198,6 @@ local function SecurityCheck(loginData)
     end
     
     createValidationFile(inputUsername, false)
-    
     return true, inputUsername, false
 end
 
@@ -198,8 +211,8 @@ end
 shared.IsGuestAccount = isGuest
 shared.ValidatedUsername = username
 
-local encryptedRepo = "d3JlYWxhZXJv" 
-local encryptedRepoName = "TmV3QWVyb1Y0" 
+local encryptedRepo = "d3JlYWxhZXJv"
+local encryptedRepoName = "TmV3QWVyb1Y0"
 local EXPECTED_REPO_OWNER = decodeBase64(encryptedRepo)
 local EXPECTED_REPO_NAME = decodeBase64(encryptedRepoName)
 
@@ -208,9 +221,7 @@ if not isfolder('newvape/security') then
 end
 
 local isfile = isfile or function(file)
-    local suc, res = pcall(function()
-        return readfile(file)
-    end)
+    local suc, res = pcall(function() return readfile(file) end)
     return suc and res ~= nil and res ~= ''
 end
 
@@ -223,21 +234,31 @@ local function downloadFile(path, func)
         local suc, res = pcall(function()
             return game:HttpGet('https://raw.githubusercontent.com/'..EXPECTED_REPO_OWNER..'/'..EXPECTED_REPO_NAME..'/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
         end)
+        
         if not suc or res == '404: Not Found' then
             error(res)
         end
+        
         if path:find('.lua') then
             res = '--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.\n'..res
         end
+        
         writefile(path, res)
     end
+    
     return (func or readfile)(path)
 end
 
 local function wipeFolder(path)
-    if not isfolder(path) then return end
+    if not isfolder(path) then
+        return
+    end
+    
     for _, file in listfiles(path) do
-        if file:find('loader') then continue end
+        if file:find('loader') then
+            continue
+        end
+        
         if isfile(file) and select(1, readfile(file):find('--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.')) == 1 then
             delfile(file)
         end
@@ -254,15 +275,18 @@ if not shared.VapeDeveloper then
     local _, subbed = pcall(function()
         return game:HttpGet('https://github.com/'..EXPECTED_REPO_OWNER..'/'..EXPECTED_REPO_NAME)
     end)
+    
     local commit = subbed:find('currentOid')
     commit = commit and subbed:sub(commit + 13, commit + 52) or nil
     commit = commit and #commit == 40 and commit or 'main'
+    
     if commit == 'main' or (isfile('newvape/profiles/commit.txt') and readfile('newvape/profiles/commit.txt') or '') ~= commit then
         wipeFolder('newvape')
         wipeFolder('newvape/games')
         wipeFolder('newvape/guis')
         wipeFolder('newvape/libraries')
     end
+    
     writefile('newvape/profiles/commit.txt', commit)
 end
 

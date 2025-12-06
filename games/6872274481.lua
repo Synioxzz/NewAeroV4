@@ -2864,49 +2864,25 @@ run(function()
 
     local function createRangeCircle()
         local suc, err = pcall(function()
-            if RangeCirclePart then
-                RangeCirclePart:Destroy()
-                RangeCirclePart = nil
-            end
-            
             if (not shared.CheatEngineMode) then
-                RangeCirclePart = Instance.new("Part")
-                RangeCirclePart.Shape = Enum.PartType.Cylinder
-                RangeCirclePart.Material = Enum.Material.Neon
-                RangeCirclePart.CanCollide = false
-                RangeCirclePart.Anchored = true
-                RangeCirclePart.CanQuery = false
-                RangeCirclePart.CanTouch = false
-                RangeCirclePart.CastShadow = false
-                RangeCirclePart.Transparency = 0.5
-                RangeCirclePart.TopSurface = Enum.SurfaceType.Smooth
-                RangeCirclePart.BottomSurface = Enum.SurfaceType.Smooth
-                
-                local diameter = AttackRange.Value * 2
-                RangeCirclePart.Size = Vector3.new(0.2, diameter, diameter)
-                
-                RangeCirclePart.Orientation = Vector3.new(0, 0, 90)
-                
+                RangeCirclePart = Instance.new("MeshPart")
+                RangeCirclePart.MeshId = "rbxassetid://3726303797"
                 if shared.RiseMode and GuiLibrary.GUICoreColor and GuiLibrary.GUICoreColorChanged then
                     RangeCirclePart.Color = GuiLibrary.GUICoreColor
                     GuiLibrary.GUICoreColorChanged.Event:Connect(function()
-                        if RangeCirclePart then
-                            RangeCirclePart.Color = GuiLibrary.GUICoreColor
-                        end
+                        RangeCirclePart.Color = GuiLibrary.GUICoreColor
                     end)
                 else
                     RangeCirclePart.Color = Color3.fromHSV(BoxSwingColor["Hue"], BoxSwingColor["Sat"], BoxSwingColor.Value)
                 end
-                
-                RangeCirclePart:SetAttribute("gamecore_GameQueryIgnore", true)
-                
+                RangeCirclePart.CanCollide = false
+                RangeCirclePart.Anchored = true
+                RangeCirclePart.Material = Enum.Material.Neon
+                RangeCirclePart.Size = Vector3.new(SwingRange.Value * 0.7, 0.01, SwingRange.Value * 0.7)
                 if Killaura.Enabled then
                     RangeCirclePart.Parent = gameCamera
-                    
-                    if entitylib.isAlive and entitylib.character.HumanoidRootPart then
-                        RangeCirclePart.Position = entitylib.character.HumanoidRootPart.Position - Vector3.new(0, entitylib.character.Humanoid.HipHeight + 2, 0)
-                    end
                 end
+                RangeCirclePart:SetAttribute("gamecore_GameQueryIgnore", true)
             end
         end)
         if (not suc) then
@@ -2915,17 +2891,14 @@ run(function()
                     RangeCirclePart:Destroy()
                     RangeCirclePart = nil
                 end
-                InfoNotification("Killaura - Range Visualiser Circle", "There was an error creating the circle: " .. tostring(err), 3)
+                InfoNotification("Killaura - Range Visualiser Circle", "There was an error creating the circle. Disabling...", 2)
             end)
         end
     end
 
     local function getAttackData()
         if Mouse.Enabled then
-            local mousePressed = inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
-            if not mousePressed then 
-                return false 
-            end
+            if not inputService:IsMouseButtonPressed(0) then return false end
         end
 
         if GUI.Enabled then
@@ -2941,7 +2914,12 @@ run(function()
         end
 
         if LegitAura.Enabled then
-            if (tick() - bedwars.SwordController.lastSwing) > 0.2 then return false end
+            local isSwinging = inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+            local timeSinceLastSwing = workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack
+            local recentlySwung = timeSinceLastSwing < 0.3
+            if not isSwinging and not recentlySwung then
+                return false
+            end
         end
 
         if SwingTime.Enabled then
@@ -3082,10 +3060,7 @@ run(function()
                 repeat
                     pcall(function()
                         if entitylib.isAlive and entitylib.character.HumanoidRootPart then
-                            if RangeCirclePart and entitylib.isAlive and entitylib.character.HumanoidRootPart then
-                                local rootPos = entitylib.character.HumanoidRootPart.Position
-                                RangeCirclePart.CFrame = CFrame.new(rootPos.X, rootPos.Y - 2.8, rootPos.Z) * CFrame.Angles(0, 0, math.rad(90))
-                            end
+                            TweenService:Create(RangeCirclePart, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Position = entitylib.character.HumanoidRootPart.Position - Vector3.new(0, entitylib.character.Humanoid.HipHeight, 0)}):Play()
                         end
                     end)
                     local attacked, sword, meta, canAttack = {}, getAttackData()
@@ -14418,30 +14393,6 @@ run(function()
 end)
 
 run(function()
-    local allowedUser = "Desire"  
-    local currentUser = shared.ValidatedUsername or game:GetService("Players").LocalPlayer.Name
-    
-    if currentUser ~= allowedUser then
-        local LockedModule = vape.Categories.Utility:CreateModule({
-            Name = 'InvisibleCursor [LOCKED]',
-            Function = function(callback)
-                if callback then
-                    if vape and vape.CreateNotification then
-                        vape:CreateNotification("InvisibleCursor", "This feature is exclusive to " .. allowedUser, 5, "warning")
-                    else
-                        game.StarterGui:SetCore("SendNotification", {
-                            Title = "InvisibleCursor [LOCKED]",
-                            Text = "This feature is exclusive to " .. allowedUser,
-                            Duration = 5
-                        })
-                    end
-                end
-            end,
-            Tooltip = 'This feature is exclusive to ' .. allowedUser
-        })
-        return 
-    end
-    
     local InvisibleCursor = {}
     local isActive = false
     local renderConnection

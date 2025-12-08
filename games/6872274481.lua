@@ -2785,6 +2785,50 @@ run(function()
     local preserveSwordIcon = false
     local sigridcheck = false
 
+    local BLOCK_SIZE = 3 
+    local RAYCAST_SWORD_CHARACTER_DISTANCE = 4.8 * BLOCK_SIZE 
+    local REGION_SWORD_CHARACTER_DISTANCE = 4.2 * BLOCK_SIZE 
+    
+    local function calculateExtendedReach(selfPos, targetPos, desiredRange)
+        local distance = (selfPos - targetPos).Magnitude
+        
+        if distance <= RAYCAST_SWORD_CHARACTER_DISTANCE then
+            return selfPos, targetPos
+        end
+        
+        if distance > RAYCAST_SWORD_CHARACTER_DISTANCE and distance <= desiredRange then
+            local direction = (targetPos - selfPos).Unit
+            
+            local adjustedSelfPos = targetPos - (direction * RAYCAST_SWORD_CHARACTER_DISTANCE * 0.95)
+            
+            local randomOffset = Vector3.new(
+                math.random(-0.3, 0.3),
+                math.random(-0.1, 0.1),
+                math.random(-0.3, 0.3)
+            )
+            
+            return adjustedSelfPos + randomOffset, targetPos
+        end
+        
+        return selfPos, targetPos
+    end
+    
+    local function simulateValidRaycast(selfPos, targetPos, direction)
+        local raycastData = {
+            cameraPosition = {value = selfPos},
+            cursorDirection = {value = direction},
+            hit = nil
+        }
+        
+        local hitOffset = direction * -0.5
+        raycastData.hit = {
+            position = {value = targetPos + hitOffset},
+            normal = {value = direction * -1}
+        }
+        
+        return raycastData
+    end
+
     local function createRangeCircle()
         local suc, err = pcall(function()
             if (not shared.CheatEngineMode) then
@@ -3029,7 +3073,10 @@ run(function()
                                 local actualRoot = v.Character.PrimaryPart
                                 if actualRoot then
                                     local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
-                                    local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
+                                    
+                                    local adjustedSelfPos, adjustedTargetPos = calculateExtendedReach(selfpos, actualRoot.Position, AttackRange.Value)
+                                    local pos = adjustedSelfPos
+                                    
                                     swingCooldown = tick()
                                     bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
                                     store.attackReach = (delta.Magnitude * 100) // 1 / 100
@@ -3040,21 +3087,24 @@ run(function()
                                     end
 
                                     lastTargetTime = tick()
-
-                                    AttackRemote:FireServer({
+                                    
+                                    local attackData = {
                                         weapon = sword.tool,
                                         chargedAttack = {chargeRatio = 0},
                                         lastSwingServerTimeDelta = 0.5,
                                         entityInstance = v.Character,
                                         validate = {
-                                            raycast = {
-                                                cameraPosition = {value = pos},
-                                                cursorDirection = {value = dir}
-                                            },
-                                            targetPosition = {value = actualRoot.Position},
+                                            raycast = simulateValidRaycast(pos, adjustedTargetPos, dir),
+                                            targetPosition = {value = adjustedTargetPos},
                                             selfPosition = {value = pos}
                                         }
-                                    })
+                                    }
+                                    
+                                    if not Swing.Enabled then
+                                        attackData.swingBufferMultiplier = 0.4
+                                    end
+                                    
+                                    AttackRemote:FireServer(attackData)
                                 end
                             end
 
@@ -3156,7 +3206,7 @@ run(function()
         Name = 'Swing range',
         Min = 1,
         Max = 40,
-        Default = 22,
+        Default = 25,
         Suffix = function(val)
             return val == 1 and 'stud' or 'studs'
         end
@@ -3166,7 +3216,7 @@ run(function()
         Name = 'Attack range',
         Min = 1,
         Max = 28,
-        Default = 22,
+        Default = 25,
         Suffix = function(val)
             return val == 1 and 'stud' or 'studs'
         end
@@ -3176,7 +3226,7 @@ run(function()
         Name = 'Swing time',
         Min = 0,
         Max = 0.5,
-        Default = 0.42,
+        Default = 0,
         Decimal = 100
     })
 
@@ -3190,8 +3240,8 @@ run(function()
     UpdateRate = Killaura:CreateSlider({
         Name = 'Update rate',
         Min = 1,
-        Max = 120,
-        Default = 60,
+        Max = 180,
+        Default = 80, 
         Suffix = 'hz'
     })
 
@@ -9267,7 +9317,7 @@ run(function()
 	end
 	
 	StaffDetector = vape.Categories.Utility:CreateModule({
-		Name = 'StaffDetector',
+		Name = 'Staff Detector',
 		Function = function(callback)
 			if callback then
 				StaffDetector:Clean(playersService.PlayerAdded:Connect(playerAdded))
@@ -9306,6 +9356,13 @@ run(function()
 		Name = 'Users',
 		Placeholder = 'player (userid)'
 	})
+	
+	task.spawn(function()
+		repeat task.wait(1) until vape.Loaded or vape.Loaded == nil
+		if vape.Loaded and not StaffDetector.Enabled then
+			StaffDetector:Toggle()
+		end
+	end)
 end)
 	
 run(function()
@@ -14394,4 +14451,87 @@ run(function()
             updateCursor()
         end)
     end
+end)
+
+run(function()
+    local TaxDisabler = vape.Categories.Blatant:CreateModule({
+        Name = 'Tax Disabler',
+        Function = function(callback)
+            if callback then
+                local oldRemote
+                local suc, res = pcall(function()
+                    local Client = require(replicatedStorage.TS.remotes).default.Client
+                    oldRemote = Client:Get("UpdateShopTaxState")
+                    
+                    Client:Get("UpdateShopTaxState"):Connect(function(taxData)
+                        local modifiedTaxData = {
+                            taxState = false, 
+                            addedTax = {} 
+                        }
+                        
+                        if bedwars.Store then
+                            bedwars.Store:dispatch({
+                                type = "IncrementTaxState",
+                                taxData = modifiedTaxData
+                            })
+                        end
+                    end)
+                end)
+                
+                if not suc then
+                    notif('Tax Disabler', 'Failed to hook into tax system', 5, 'alert')
+                    TaxDisabler:Toggle()
+                end
+                
+                store.TaxDisablerOldRemote = oldRemote
+                
+            else
+                if store.TaxDisablerOldRemote then
+                    pcall(function()
+                        local Client = require(replicatedStorage.TS.remotes).default.Client
+                        Client:Get("UpdateShopTaxState"):Destroy()
+                        -- note to self: in practice we cant easily restore the original remote
+                        -- the connection will be cleared when we re enable the module
+                    end)
+                    store.TaxDisablerOldRemote = nil
+                end
+            end
+        end,
+        Tooltip = 'Prevents shop tax from being applied\nwhen taking items from teammates.'
+    })
+
+    -- alternative approach using knit controller
+    local function hookIntoKnitController()
+        local suc, Knit = pcall(function()
+            return debug.getupvalue(require(lplr.PlayerScripts.TS.knit).setup, 9)
+        end)
+        
+        if suc and Knit then
+            for _, controller in pairs(Knit.Controllers) do
+                if controller.Name == "ShopTaxController" then
+                    local oldKnitStart = controller.KnitStart
+                    controller.KnitStart = function(self, ...)
+                        local result = oldKnitStart(self, ...)
+                        
+                        self.taxStateUpdateEvent:Connect(function(taxData)
+                            self.hasTax = false
+                            self.addedTaxMap = {}
+                            self.taxedItems = {}
+                            
+                            if bedwars.Store then
+                                bedwars.Store:dispatch({
+                                    type = "IncrementTaxState"
+                                })
+                            end
+                        end)
+                        
+                        return result
+                    end
+                    break
+                end
+            end
+        end
+    end
+
+    task.spawn(hookIntoKnitController)
 end)

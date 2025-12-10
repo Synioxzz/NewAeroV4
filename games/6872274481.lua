@@ -2995,50 +2995,6 @@ run(function()
     local preserveSwordIcon = false
     local sigridcheck = false
 
-    local BLOCK_SIZE = 3 
-    local RAYCAST_SWORD_CHARACTER_DISTANCE = 4.8 * BLOCK_SIZE 
-    local REGION_SWORD_CHARACTER_DISTANCE = 4.2 * BLOCK_SIZE 
-    
-    local function calculateExtendedReach(selfPos, targetPos, desiredRange)
-        local distance = (selfPos - targetPos).Magnitude
-        
-        if distance <= RAYCAST_SWORD_CHARACTER_DISTANCE then
-            return selfPos, targetPos
-        end
-        
-        if distance > RAYCAST_SWORD_CHARACTER_DISTANCE and distance <= desiredRange then
-            local direction = (targetPos - selfPos).Unit
-            
-            local adjustedSelfPos = targetPos - (direction * RAYCAST_SWORD_CHARACTER_DISTANCE * 0.95)
-            
-            local randomOffset = Vector3.new(
-                math.random(-0.3, 0.3),
-                math.random(-0.1, 0.1),
-                math.random(-0.3, 0.3)
-            )
-            
-            return adjustedSelfPos + randomOffset, targetPos
-        end
-        
-        return selfPos, targetPos
-    end
-    
-    local function simulateValidRaycast(selfPos, targetPos, direction)
-        local raycastData = {
-            cameraPosition = {value = selfPos},
-            cursorDirection = {value = direction},
-            hit = nil
-        }
-        
-        local hitOffset = direction * -0.5
-        raycastData.hit = {
-            position = {value = targetPos + hitOffset},
-            normal = {value = direction * -1}
-        }
-        
-        return raycastData
-    end
-
     local function createRangeCircle()
         local suc, err = pcall(function()
             if (not shared.CheatEngineMode) then
@@ -3283,10 +3239,7 @@ run(function()
                                 local actualRoot = v.Character.PrimaryPart
                                 if actualRoot then
                                     local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
-                                    
-                                    local adjustedSelfPos, adjustedTargetPos = calculateExtendedReach(selfpos, actualRoot.Position, AttackRange.Value)
-                                    local pos = adjustedSelfPos
-                                    
+                                    local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
                                     swingCooldown = tick()
                                     bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
                                     store.attackReach = (delta.Magnitude * 100) // 1 / 100
@@ -3297,24 +3250,21 @@ run(function()
                                     end
 
                                     lastTargetTime = tick()
-                                    
-                                    local attackData = {
+
+                                    AttackRemote:FireServer({
                                         weapon = sword.tool,
                                         chargedAttack = {chargeRatio = 0},
                                         lastSwingServerTimeDelta = 0.5,
                                         entityInstance = v.Character,
                                         validate = {
-                                            raycast = simulateValidRaycast(pos, adjustedTargetPos, dir),
-                                            targetPosition = {value = adjustedTargetPos},
+                                            raycast = {
+                                                cameraPosition = {value = pos},
+                                                cursorDirection = {value = dir}
+                                            },
+                                            targetPosition = {value = actualRoot.Position},
                                             selfPosition = {value = pos}
                                         }
-                                    }
-                                    
-                                    if not Swing.Enabled then
-                                        attackData.swingBufferMultiplier = 0.4 
-                                    end
-                                    
-                                    AttackRemote:FireServer(attackData)
+                                    })
                                 end
                             end
 
@@ -3415,8 +3365,8 @@ run(function()
     SwingRange = Killaura:CreateSlider({
         Name = 'Swing range',
         Min = 1,
-        Max = 40, 
-        Default = 25,
+        Max = 40,
+        Default = 22,
         Suffix = function(val)
             return val == 1 and 'stud' or 'studs'
         end
@@ -3425,8 +3375,8 @@ run(function()
     AttackRange = Killaura:CreateSlider({
         Name = 'Attack range',
         Min = 1,
-        Max = 28, 
-        Default = 25,
+        Max = 28,
+        Default = 22,
         Suffix = function(val)
             return val == 1 and 'stud' or 'studs'
         end
@@ -3451,7 +3401,7 @@ run(function()
         Name = 'Update rate',
         Min = 1,
         Max = 120,
-        Default = 80, 
+        Default = 60,
         Suffix = 'hz'
     })
 
@@ -5687,6 +5637,140 @@ run(function()
 		Name = 'First Person Only',
 		Default = false,
 		Tooltip = 'Only works in first person mode'
+	})
+end)
+
+run(function()
+	local TargetPart
+	local Targets
+	local FOV
+	local OtherProjectiles
+	local Blacklist
+
+	local rayCheck = RaycastParams.new()
+	rayCheck.FilterType = Enum.RaycastFilterType.Include
+	rayCheck.FilterDescendantsInstances = {workspace:FindFirstChild('Map')}
+	local old
+	
+	local ProjectileAimbot; ProjectileAimbot = vape.Categories.Blatant:CreateModule({
+		Name = 'Projectile Aimbot',
+		Function = function(callback)
+			if callback then
+				local canshoot = os.clock()
+				
+				old = bedwars.ProjectileController.calculateImportantLaunchValues
+				bedwars.ProjectileController.calculateImportantLaunchValues = function(...)	
+					local self, projmeta, worldmeta, origin, shootpos = ...
+					local plr = entitylib.EntityMouse({
+						Part = 'RootPart',
+						Range = FOV.Value,
+						Players = Targets.Players.Enabled,
+						NPCs = Targets.NPCs.Enabled,
+						Wallcheck = Targets.Walls.Enabled,
+						Origin = entitylib.isAlive and (shootpos or entitylib.character.RootPart.Position) or Vector3.zero
+					})
+	
+					if plr then
+						local pos = shootpos or self:getLaunchPosition(origin)
+						if not pos then
+							return old(...)
+						end
+	
+						if (not OtherProjectiles.Enabled) and not projmeta.projectile:find('arrow') then
+							return old(...)
+						end
+
+						if table.find(Blacklist.ListEnabled, projmeta.projectile) then
+							return old(...)
+						end
+	
+						local meta = projmeta:getProjectileMeta()
+						local lifetime = (worldmeta and meta.predictionLifetimeSec or meta.lifetimeSec or 3)
+						local gravity = (meta.gravitationalAcceleration or 196.2) * projmeta.gravityMultiplier
+						local projSpeed = (meta.launchVelocity or 100) 
+						local offsetpos = pos + (projmeta.projectile == 'owl_projectile' and Vector3.zero or projmeta.fromPositionOffset)
+						local balloons = plr.Character:GetAttribute('InflatedBalloons')
+						local playerGravity = workspace.Gravity
+	
+						if balloons and balloons > 0 then
+							playerGravity = (workspace.Gravity * (1 - ((balloons >= 4 and 1.2 or balloons >= 3 and 1 or 0.975))))
+						end
+	
+						if plr.Character.PrimaryPart:FindFirstChild('rbxassetid://8200754399') then
+							playerGravity = 6
+						end
+
+						if not plr.NPC and plr.Player:GetAttribute('IsOwlTarget') then
+							for _, owl in collectionService:GetTagged('Owl') do
+								if owl:GetAttribute('Target') == plr.Player.UserId and owl:GetAttribute('Status') == 2 then
+									playerGravity = 0
+								end
+							end
+						end
+	
+						local newlook = CFrame.new(offsetpos, plr[TargetPart.Value].Position) * CFrame.new(projmeta.projectile == 'owl_projectile' and Vector3.zero or Vector3.new(bedwars.BowConstantsTable.RelX, bedwars.BowConstantsTable.RelY, bedwars.BowConstantsTable.RelZ))
+						
+						local calc = prediction.SolveTrajectory(
+							newlook.p, 
+							projSpeed, 
+							gravity, 
+							plr[TargetPart.Value].Position, 
+							projmeta.projectile == 'telepearl' and Vector3.zero or plr[TargetPart.Value].Velocity, 
+							playerGravity, 
+							plr.HipHeight, 
+							plr.Jumping and 42.6 or nil, 
+							rayCheck, 
+							plr.Humanoid.MoveDirection ~= Vector3.zero, 
+							lplr:GetNetworkPing()
+						)
+						
+						if calc then
+							targetinfo.Targets[plr] = os.clock() + 1
+							return {
+								initialVelocity = CFrame.new(newlook.Position, calc).LookVector * projSpeed,
+								positionFrom = offsetpos,
+								deltaT = lifetime,
+								gravitationalAcceleration = gravity,
+								drawDurationSeconds = 5
+							}
+						end
+					end
+	
+					return old(...)
+				end
+			else
+				bedwars.ProjectileController.calculateImportantLaunchValues = old
+			end
+		end,
+		Tooltip = 'Automatically aims projectiles at enemies'
+	})
+	Targets = ProjectileAimbot:CreateTargets({
+		Players = true,
+		Walls = true
+	})
+	TargetPart = ProjectileAimbot:CreateDropdown({
+		Name = 'Part',
+		List = {'RootPart', 'Head'}
+	})
+	FOV = ProjectileAimbot:CreateSlider({
+		Name = 'FOV',
+		Min = 1,
+		Max = 1000,
+		Default = 1000
+	})
+	OtherProjectiles = ProjectileAimbot:CreateToggle({
+		Name = 'Other Projectiles',
+		Default = true,
+		Function = function(call)
+			if Blacklist then
+				Blacklist.Object.Visible = call
+			end
+		end
+	})
+	Blacklist = ProjectileAimbot:CreateTextList({
+		Name = 'Blacklist',
+		Darker = true,
+		Default = {'telepearl'}
 	})
 end)
 
@@ -8937,6 +9021,13 @@ run(function()
 		Name = 'Users',
 		Placeholder = 'player (userid)'
 	})
+	
+	task.spawn(function()
+		repeat task.wait(1) until vape.Loaded or vape.Loaded == nil
+		if vape.Loaded and not StaffDetector.Enabled then
+			StaffDetector:Toggle()
+		end
+	end)
 end)
 	
 run(function()

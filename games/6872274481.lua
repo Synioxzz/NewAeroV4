@@ -1,4 +1,3 @@
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 
 local run = function(func)
 	func()
@@ -2145,6 +2144,7 @@ run(function()
 	local Chance
 	local TargetCheck
 	local AirVelocity
+	local AirVelocityAmount
 	local AirHeight
 	local rand, old = Random.new()
 	local baseGroundY = nil
@@ -2189,8 +2189,8 @@ run(function()
 						local vertValue = Vertical.Value
 						
 						if AirVelocity.Enabled and isHighAboveBase() then
-							horizValue = 0
-							vertValue = 0
+							horizValue = AirVelocityAmount.Value
+							vertValue = AirVelocityAmount.Value
 						end
 						
 						if horizValue == 0 and vertValue == 0 then return end
@@ -2240,13 +2240,23 @@ run(function()
 	TargetCheck = Velocity:CreateToggle({Name = 'Only when targeting'})
 	AirVelocity = Velocity:CreateToggle({
 		Name = 'Air Velocity',
-		Tooltip = 'Takes full knockback when building high above your base position',
+		Tooltip = 'Custom knockback when building high above your base position',
 		Function = function(callback)
 			if callback and entitylib.isAlive then
 				baseGroundY = entitylib.character.RootPart.Position.Y
 			end
+			AirVelocityAmount.Object.Visible = callback
 		end
 	})
+	AirVelocityAmount = Velocity:CreateSlider({
+		Name = 'Air Amount',
+		Min = 0,
+		Max = 100,
+		Default = 0,
+		Suffix = '%',
+		Tooltip = 'Knockback percentage when in air (applies to both horizontal and vertical)'
+	})
+	AirVelocityAmount.Object.Visible = false
 	
 	Velocity:CreateButton({
 		Name = 'Reset Base Position',
@@ -5640,6 +5650,7 @@ run(function()
 end)
 
 run(function()
+	local SilentAim = {Enabled = true}
 	local TargetPart
 	local Targets
 	local FOV
@@ -5655,6 +5666,7 @@ run(function()
 		Name = 'Projectile Aimbot',
 		Function = function(callback)
 			if callback then
+				local newpos = nil
 				local canshoot = os.clock()
 				
 				old = bedwars.ProjectileController.calculateImportantLaunchValues
@@ -5711,6 +5723,11 @@ run(function()
 						local calc = prediction.SolveTrajectory(newlook.p, projSpeed, gravity, plr[TargetPart.Value].Position, projmeta.projectile == 'telepearl' and Vector3.zero or plr[TargetPart.Value].Velocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck, plr.Humanoid.MoveDirection ~= Vector3.zero, lplr:GetNetworkPing())
 						if calc then
 							targetinfo.Targets[plr] = os.clock() + 1
+							if not SilentAim.Enabled then
+								newpos = calc - Vector3.new(0, 4, 0)
+								canshoot = os.clock() + 0.1
+								return old(...)
+							end
 							return {
 								initialVelocity = CFrame.new(newlook.Position, calc).LookVector * projSpeed,
 								positionFrom = offsetpos,
@@ -5723,11 +5740,28 @@ run(function()
 	
 					return old(...)
 				end
+
+				ProjectileAimbot:Clean(runService.PreRender:Connect(function(delta)
+					if canshoot > os.clock() and newpos and mousemoverel and not SilentAim.Enabled and entitylib.EntityMouse({
+						Part = 'RootPart',
+						Range = FOV.Value,
+						Players = Targets.Players.Enabled,
+						NPCs = Targets.NPCs.Enabled,
+						Wallcheck = Targets.Walls.Enabled
+					}) then
+						local pos, vis = workspace.CurrentCamera:WorldToViewportPoint(newpos)
+
+						if vis and isrbxactive() then
+							pos = (Vector2.new(pos.X, pos.Y) - game.UserInputService:GetMouseLocation()) * (100 * delta / 3)
+							mousemoverel(pos.X, pos.Y)
+						end
+					end
+				end))
 			else
 				bedwars.ProjectileController.calculateImportantLaunchValues = old
 			end
 		end,
-		Tooltip = 'Automatically aims projectiles at enemies'
+		Tooltip = 'Silently adjusts your aim towards the enemy'
 	})
 	Targets = ProjectileAimbot:CreateTargets({
 		Players = true,

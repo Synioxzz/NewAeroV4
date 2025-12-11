@@ -2982,7 +2982,6 @@ run(function()
     local AnimationSpeed
     local AnimationTween
     local Limit
-	local SwingAngleSlider
     local LegitAura
     local SyncHits
     local lastAttackTime = 0
@@ -3276,9 +3275,10 @@ run(function()
 					if sword and canAttack then
 						if sigridcheck and entitylib.isAlive and lplr.Character:FindFirstChild("elk") then return end
 						local isClaw = string.find(string.lower(tostring(sword and sword.itemType or "")), "summoner_claw")
-						local plrs = entitylib.AllPosition({
+						
+						local swingPlrs = entitylib.AllPosition({
 							Range = SwingRange.Value,
-							Wallcheck = Targets.Walls.Enabled or nil,
+							Wallcheck = false,  
 							Part = 'RootPart',
 							Players = Targets.Players.Enabled,
 							NPCs = Targets.NPCs.Enabled,
@@ -3286,35 +3286,54 @@ run(function()
 							Sort = sortmethods[Sort.Value]
 						})
 						
-						local hasValidTargets = false
+						local attackPlrs = entitylib.AllPosition({
+							Range = SwingRange.Value,
+							Wallcheck = Targets.Walls.Enabled or nil,  
+							Part = 'RootPart',
+							Players = Targets.Players.Enabled,
+							NPCs = Targets.NPCs.Enabled,
+							Limit = MaxTargets.Value,
+							Sort = sortmethods[Sort.Value]
+						})
+						
+						local hasValidSwingTargets = false
+						local hasValidAttackTargets = false
 						local selfpos = entitylib.character.RootPart.Position
 						local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
+						local maxAngle = math.rad(AngleSlider.Value) / 2 
 						
-						for _, v in plrs do
+						for _, v in swingPlrs do
 							local delta = (v.RootPart.Position - selfpos)
 							local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
-							local swingAngle = SwingAngleSlider and math.rad(SwingAngleSlider.Value) or math.rad(AngleSlider.Value)
-							
-							if angle <= (swingAngle / 2) then
-								hasValidTargets = true
+							if angle <= maxAngle then
+								hasValidSwingTargets = true
 								break
 							end
 						end
 						
-						if hasValidTargets then
+						for _, v in attackPlrs do
+							local delta = (v.RootPart.Position - selfpos)
+							local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+							if angle <= maxAngle then  
+								hasValidAttackTargets = true
+								break
+							end
+						end
+						
+						if hasValidSwingTargets or hasValidAttackTargets then
 							lastTargetTime = tick()
 						end
 						
-						local shouldSwing = hasValidTargets or shouldContinueSwinging()
+						local shouldSwing = hasValidSwingTargets or hasValidAttackTargets or shouldContinueSwinging()
 						
 						if shouldSwing then
 							switchItem(sword.tool, 0)
 							
-							if hasValidTargets then
-								for _, v in plrs do
+							if hasValidAttackTargets then
+								for _, v in attackPlrs do
 									local delta = (v.RootPart.Position - selfpos)
 									local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
-									local swingAngle = SwingAngleSlider and math.rad(SwingAngleSlider.Value) or math.rad(AngleSlider.Value)
+									local swingAngle = math.rad(AngleSlider.Value)
 									if angle > (swingAngle / 2) then continue end
 
 									table.insert(attacked, {
@@ -3454,34 +3473,6 @@ run(function()
 								
 								if not SyncHits.Enabled or (tick() - swingCooldown) >= minSwingDelay then
 									swingCooldown = tick()
-									
-									local dir = entitylib.character.RootPart.CFrame.LookVector
-									local pos = entitylib.character.RootPart.Position
-									local targetPos = pos + dir * 10
-
-									local attackData = {
-										weapon = sword.tool,
-										entityInstance = entitylib.character.Character,
-										chargedAttack = {chargeRatio = 0},
-										validate = {
-											raycast = {
-												cameraPosition = {value = pos},
-												cursorDirection = {value = dir}
-											},
-											targetPosition = {value = targetPos},
-											selfPosition = {value = pos}
-										}
-									}
-									
-									attackData.validate = attackData.validate or {}
-									attackData.validate.raycast = attackData.validate.raycast or {}
-									attackData.validate.targetPosition = attackData.validate.targetPosition or {value = targetPos}
-									attackData.validate.selfPosition = attackData.validate.selfPosition or {value = pos}
-									
-									attackData.validate.raycast.cameraPosition = attackData.validate.raycast.cameraPosition or {value = pos}
-									attackData.validate.raycast.cursorDirection = attackData.validate.raycast.cursorDirection or {value = dir}
-									
-									FireAttackRemote(attackData)
 								end
 							end
 						end
@@ -3597,12 +3588,6 @@ run(function()
         Max = 360,
         Default = 360
     })
-	SwingAngleSlider = Killaura:CreateSlider({
-		Name = 'Swing angle',
-		Min = 1,
-		Max = 360,
-		Default = 360
-	})
     UpdateRate = Killaura:CreateSlider({
         Name = 'Update rate',
         Min = 1,
@@ -8871,35 +8856,129 @@ run(function()
 end)
 	
 run(function()
-	local ShopTierBypass
-	local tiered, nexttier = {}, {}
-	
-	ShopTierBypass = vape.Categories.Utility:CreateModule({
-		Name = 'ShopTierBypass',
-		Function = function(callback)
-			if callback then
-				repeat task.wait() until store.shopLoaded or not ShopTierBypass.Enabled
-				if ShopTierBypass.Enabled then
-					for _, v in bedwars.Shop.ShopItems do
-						tiered[v] = v.tiered
-						nexttier[v] = v.nextTier
-						v.nextTier = nil
-						v.tiered = nil
-					end
-				end
-			else
-				for i, v in tiered do
-					i.tiered = v
-				end
-				for i, v in nexttier do
-					i.nextTier = v
-				end
-				table.clear(nexttier)
-				table.clear(tiered)
-			end
-		end,
-		Tooltip = 'Lets you buy things like armor early.'
-	})
+    local ShopTierBypass
+    local tiered, nexttier = {}, {}
+    local originalGetShop
+    local shopItemsTracked = {}
+    
+    local function applyBypassToItem(item)
+        if item and type(item) == "table" then
+            if not tiered[item] then 
+                tiered[item] = item.tiered 
+            end
+            if not nexttier[item] then 
+                nexttier[item] = item.nextTier 
+            end
+            item.nextTier = nil
+            item.tiered = nil
+            shopItemsTracked[item] = true
+        end
+    end
+    
+    local function applyBypassToTable(tbl)
+        if tbl and type(tbl) == "table" then
+            for _, item in pairs(tbl) do
+                if type(item) == "table" then
+                    applyBypassToItem(item)
+                end
+            end
+        end
+    end
+    
+    local function getShopController()
+        local success, result = pcall(function()
+            local RuntimeLib = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+            if RuntimeLib then
+                return RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "games", "bedwars", "shop", "bedwars-shop")
+            end
+        end)
+        
+        if success then
+            return result
+        end
+        
+        -- alt method: check if the module exists as a regular module if not gg
+        local shopModule = game:GetService("ReplicatedStorage"):FindFirstChild("TS"):FindFirstChild("games"):FindFirstChild("bedwars"):FindFirstChild("shop"):FindFirstChild("bedwars-shop")
+        if shopModule and shopModule:IsA("ModuleScript") then
+            return require(shopModule)
+        end
+        
+        return nil
+    end
+    
+    ShopTierBypass = vape.Categories.Utility:CreateModule({
+        Name = 'Shop Tier Bypass',
+        Function = function(callback)
+            if callback then
+                repeat task.wait() until store.shopLoaded or not ShopTierBypass.Enabled
+                if ShopTierBypass.Enabled then
+                    for _, v in pairs(bedwars.Shop.ShopItems) do
+                        tiered[v] = v.tiered
+                        nexttier[v] = v.nextTier
+                        v.nextTier = nil
+                        v.tiered = nil
+                        shopItemsTracked[v] = true
+                    end
+                    
+                    if bedwars.Shop.getShop and not originalGetShop then
+                        originalGetShop = bedwars.Shop.getShop
+                        bedwars.Shop.getShop = function(...)
+                            local result = originalGetShop(...)
+                            
+                            if type(result) == "table" then
+                                applyBypassToTable(result)
+                            end
+                            
+                            return result
+                        end
+                    end
+                    
+                    local shopController = getShopController()
+                    if shopController and shopController.BedwarsShop and shopController.BedwarsShop.getShop then
+                        if not tiered["shopControllerHooked"] then
+                            tiered["shopControllerHooked"] = true
+                            local originalControllerGetShop = shopController.BedwarsShop.getShop
+                            shopController.BedwarsShop.getShop = function(...)
+                                local result = originalControllerGetShop(...)
+                                if type(result) == "table" then
+                                    applyBypassToTable(result)
+                                end
+                                return result
+                            end
+                        end
+                    end
+                end
+            else
+                for item, _ in pairs(shopItemsTracked) do
+                    if item and type(item) == "table" then
+                        if tiered[item] ~= nil then
+                            item.tiered = tiered[item]
+                        end
+                        if nexttier[item] ~= nil then
+                            item.nextTier = nexttier[item]
+                        end
+                    end
+                end
+                
+                if tiered["shopControllerHooked"] then
+                    local shopController = getShopController()
+                    if shopController and shopController.BedwarsShop and shopController.BedwarsShop.getShop then
+                    end
+                    tiered["shopControllerHooked"] = nil
+                end
+                
+                if originalGetShop then
+                    bedwars.Shop.getShop = originalGetShop
+                    originalGetShop = nil
+                end
+                
+                table.clear(tiered)
+                table.clear(nexttier)
+                table.clear(shopItemsTracked)
+            end
+        end,
+        Tooltip = 'Lets you buy things like armor and tools early.'
+    })
 end)
 	
 run(function()
@@ -14171,3 +14250,4 @@ run(function()
         end)
     end
 end)
+
